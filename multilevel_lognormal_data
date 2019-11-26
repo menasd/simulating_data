@@ -1,0 +1,59 @@
+#How to simulate lognormal multilevel data
+
+#We use a lirbary for sampling from the bivaraite lognormal distribution.
+require(MethylCapSig)
+
+  N <- 100 #Observations
+  Timepoint <- 4 #Time points or level 2 groups
+  s2e <- 100     #Variance of the level 1 errors
+  b0  <- 100     #Intercept
+  s2l <- 100     #Intercept variance
+  b1  <- 0       #Slope
+  s2s <- 25      #Slope variance
+  cor <- 0       #Correlation between intercept and slope
+  
+  # Lambda matrix
+  Lambda     <- matrix(NA, Timepoint, 2)
+  Lambda[,1] <- 1
+  
+  Lambda[,2] <- seq(0, Timepoint-1, 1)
+  
+  # Null data matrix
+  data <- matrix(NA, N, Timepoint)
+  colnames(data) <- paste("t", 1:Timepoint, sep = "")
+  
+  #Covariance matrix:
+  covariance.ls   <- correlation * sqrt(s2s) * sqrt(s2l)
+  sigma           <- matrix(c(s2l,covariance.ls,
+                              covariance.ls, s2s),ncol = 2)
+  
+  #### Level 2: LogNormal ####
+  Mu    <- c(10,10)
+  Sigma <- c(10,10) #	Vector of length k containing the diagonal of covariances.
+  R     <- matrix(c(1,cor,cor,1), ncol = 2, nrow = 2)
+  
+  u <- mvlognormal(N, Mu, Sigma, R)
+  u <- u-Mu[1]
+  u[,1] <- u[,1] * sqrt(s2l) / sqrt(10) #b0i
+  u[,2] <- u[,2] * sqrt(s2s) / sqrt(10) #b1i
+
+  ##Beta: 
+  beta.l  <- b0 + u[,1]
+  beta.s  <- b1 + u[,2]
+  beta    <- cbind(beta.l, beta.s)
+  
+  #### Level 1: LogNormal ###
+  #This mu and sigma are defined to appease the rlnorm parameters:
+  # Like above, we do 10 mean and then center to avoid the cero boundary.
+  var  <- 10
+  mean <- 10
+  
+  sigma <- log((var/(mean^2))+1)
+  mu <- log(mean)-(sigma/2)
+  temp <- matrix(rlnorm(N*Timepoint,meanlog=mu,sdlog=sqrt(sigma)),ncol=Timepoint)
+
+  cent.temp <- temp - 10
+  e <- cent.temp / sqrt(10) * sqrt(s2e)
+  
+  data    <- beta %*% t(Lambda) + e
+  colnames(data) <- paste("t", 1:Timepoint, sep = "")
